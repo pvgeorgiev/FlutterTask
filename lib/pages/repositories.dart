@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_task/network/rest_client.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_task/models/repository.dart';
-import 'package:flutter_task/networking/rest_client.dart';
+import 'package:flutter_task/pages/repository_info.dart';
 
 class Repositories extends StatefulWidget {
   const Repositories({Key? key}) : super(key: key);
@@ -11,43 +12,65 @@ class Repositories extends StatefulWidget {
 }
 
 class _RepositoriesState extends State<Repositories> {
+
   List<Repository> repositories = [];
+  late RestClient client;
 
-  void makeRequest() {
-    final dio = Dio();
-    dio.options.headers['accept'] = 'application/vnd.github.v3+json';
-    final client = RestClient(dio);
+  final searchController = TextEditingController();
 
-    client
-        .getRepositories()
-        .then((value) => _refreshData(value))
-        .catchError((Object obj) {
-      switch (obj.runtimeType) {
-        case DioError:
-          final res = (obj as DioError).response;
-          print("Got error ${res!.statusCode} -> ${res.statusMessage}");
-          break;
-        default:
-          print("ERROR");
-      }
-    });
+  void _getAllRepositories() {
+    client.getAllRepositories().then((value) => _refreshListView(value));
   }
 
-  void _refreshData(List<Repository> repos) {
-    setState(() {
-      repositories.removeRange(0, repositories.length);
-      repositories.addAll(repos);
-    });
+  void _getRepositoriesByKeyword(String keyword) async {
+    this.client.getRepositories(keyword).then((value) => _refreshListView(value.items));
+  }
+
+  void _refreshListView(List<Repository> r) {
+      setState(() {
+        repositories.clear();
+        repositories.addAll(r);
+      });
+  }
+
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    final dio = Dio();
+    dio.options.headers["accept"] = "application/vnd.github.v3+json";
+
+    this.client = RestClient(dio);
+
+    _getAllRepositories();
+  }
+
+  Widget _buildRow(int index) {
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundImage: NetworkImage(repositories[index].owner.avatarUrl),
+      ),
+      title: Text(repositories[index].name ?? ''),
+      subtitle: Text(repositories[index].fullName ?? ''),
+      onTap: () {
+        Navigator.push(context, MaterialPageRoute(builder: (context) => RepositoryInfo(repo: repositories[index])));
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    makeRequest();
-
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.blue[800],
-        title: Text('Git repositories'),
+        title: Text('Git Repositories'),
+        backgroundColor: Colors.blue[900],
         elevation: 0,
         centerTitle: true,
       ),
@@ -56,44 +79,45 @@ class _RepositoriesState extends State<Repositories> {
           Padding(
             padding: EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 0),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Expanded(
                   child: TextField(
-                    obscureText: true,
-                    decoration: InputDecoration(
-                        border: OutlineInputBorder(),
-                        labelText: 'Repositories'),
+                    controller: searchController,
+                    maxLines: 1,
+                    decoration: new InputDecoration(
+                        border: new OutlineInputBorder(
+                          borderSide: new BorderSide(
+                              color: Colors.amber
+                          ),
+                        ),
+                        hintText: 'Search for repository',
+                        labelText: 'Search',
+                        suffix: Text('GIT')
+                    ),
                   ),
                 ),
-                SizedBox(
-                  width: 16.0,
-                ),
+                SizedBox(width: 15.0,),
                 ElevatedButton.icon(
-                  onPressed: () {},
-                  label: Text('Search repo'),
+                  onPressed: () {
+                    _getRepositoriesByKeyword(searchController.text);
+                  },
+                  label: Text('Search'),
                   icon: Icon(Icons.search),
-                ),
+                  style: ButtonStyle(
+                    backgroundColor:
+                    MaterialStateProperty.all(Colors.amber[400]),
+                  ),
+                )
               ],
             ),
           ),
-          Row(
-            children: [
-              ListView.builder(itemBuilder: (context, i) {
-                return _buildRow(i);
-              })
-            ],
+          Expanded(
+            child: ListView.builder(
+              itemCount: repositories.length,
+              itemBuilder: (context, index) => _buildRow(index),
+            ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildRow(int index) {
-    return ListTile(
-      title: Text(
-        'Id: ${repositories[index].id}; Name: Id: ${repositories[index].name}',
       ),
     );
   }
